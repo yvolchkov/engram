@@ -17,7 +17,9 @@ func resetSetupSeams(t *testing.T) {
 	oldRunCommand := runCommand
 	oldStatFn := statFn
 	oldOpenCodeReadFile := openCodeReadFile
+	oldPiReadFile := piReadFile
 	oldOpenCodeWriteFileFn := openCodeWriteFileFn
+	oldPiWriteFileFn := piWriteFileFn
 	oldReadFileFn := readFileFn
 	oldWriteFileFn := writeFileFn
 	oldJSONMarshalFn := jsonMarshalFn
@@ -39,7 +41,9 @@ func resetSetupSeams(t *testing.T) {
 		runCommand = oldRunCommand
 		statFn = oldStatFn
 		openCodeReadFile = oldOpenCodeReadFile
+		piReadFile = oldPiReadFile
 		openCodeWriteFileFn = oldOpenCodeWriteFileFn
+		piWriteFileFn = oldPiWriteFileFn
 		readFileFn = oldReadFileFn
 		writeFileFn = oldWriteFileFn
 		jsonMarshalFn = oldJSONMarshalFn
@@ -63,17 +67,21 @@ func useTestHome(t *testing.T) string {
 	return home
 }
 
-func TestSupportedAgentsIncludesGeminiAndCodex(t *testing.T) {
+func TestSupportedAgentsIncludesGeminiCodexAndPi(t *testing.T) {
 	agents := SupportedAgents()
 
 	var hasGemini bool
 	var hasCodex bool
+	var hasPi bool
 	for _, agent := range agents {
 		if agent.Name == "gemini-cli" {
 			hasGemini = true
 		}
 		if agent.Name == "codex" {
 			hasCodex = true
+		}
+		if agent.Name == "pi" {
+			hasPi = true
 		}
 	}
 
@@ -82,6 +90,9 @@ func TestSupportedAgentsIncludesGeminiAndCodex(t *testing.T) {
 	}
 	if !hasCodex {
 		t.Fatalf("expected codex in supported agents")
+	}
+	if !hasPi {
+		t.Fatalf("expected pi in supported agents")
 	}
 }
 
@@ -1010,6 +1021,9 @@ func TestPathHelpersAcrossOSVariants(t *testing.T) {
 	if got := codexConfigPath(); got != filepath.Join("/home/tester", ".codex", "config.toml") {
 		t.Fatalf("unexpected linux codexConfigPath: %s", got)
 	}
+	if got := piExtensionsDir(); got != filepath.Join("/home/tester", ".pi", "agent", "extensions") {
+		t.Fatalf("unexpected piExtensionsDir: %s", got)
+	}
 
 	t.Setenv("XDG_CONFIG_HOME", "/xdg")
 	if got := openCodeConfigPath(); got != filepath.Join("/xdg", "opencode", "opencode.json") {
@@ -1451,6 +1465,56 @@ func TestInstallRoutesForOpenCodeAndClaude(t *testing.T) {
 		}
 		if result.Agent != "claude-code" {
 			t.Fatalf("expected claude-code result, got %#v", result)
+		}
+	})
+
+	t.Run("pi route", func(t *testing.T) {
+		resetSetupSeams(t)
+		home := useTestHome(t)
+		expectedDir := filepath.Join(home, ".pi", "agent", "extensions")
+		lookPathFn = func(string) (string, error) {
+			t.Fatalf("pi installation should not depend on looking up the pi binary")
+			return "", errors.New("unexpected lookup")
+		}
+
+		result, err := Install("pi")
+		if err != nil {
+			t.Fatalf("Install(pi) failed: %v", err)
+		}
+		if result.Agent != "pi" {
+			t.Fatalf("expected pi result, got %#v", result)
+		}
+		if result.Destination != expectedDir {
+			t.Fatalf("expected destination %q, got %q", expectedDir, result.Destination)
+		}
+		if _, err := os.Stat(filepath.Join(expectedDir, "engram.ts")); err != nil {
+			t.Fatalf("expected engram pi extension to be installed: %v", err)
+		}
+	})
+
+	t.Run("pi route returns read error", func(t *testing.T) {
+		resetSetupSeams(t)
+		useTestHome(t)
+		piReadFile = func(string) ([]byte, error) {
+			return nil, errors.New("read boom")
+		}
+
+		_, err := Install("pi")
+		if err == nil || !strings.Contains(err.Error(), "read embedded pi extension") {
+			t.Fatalf("expected read embedded pi extension error, got %v", err)
+		}
+	})
+
+	t.Run("pi route returns write error", func(t *testing.T) {
+		resetSetupSeams(t)
+		useTestHome(t)
+		piWriteFileFn = func(string, []byte, os.FileMode) error {
+			return errors.New("write boom")
+		}
+
+		_, err := Install("pi")
+		if err == nil || !strings.Contains(err.Error(), "write ") {
+			t.Fatalf("expected write error, got %v", err)
 		}
 	})
 }

@@ -4,6 +4,7 @@
 
 - [OpenCode Plugin](#opencode-plugin)
 - [Claude Code Plugin](#claude-code-plugin)
+- [Pi Extension](#pi-extension)
 - [Privacy](#privacy)
 
 ---
@@ -117,6 +118,28 @@ plugin/claude-code/
 - **When to search** memory (reactive + proactive)
 - **Session close protocol** — mandatory `mem_session_summary` before ending
 - **After compaction** — 3-step recovery: persist summary → load context → continue
+
+---
+
+## Pi Extension
+
+For [Pi](https://pi.dev) users, Engram integrates via a native TypeScript extension (no MCP required):
+
+```bash
+engram setup pi
+```
+
+Installed file:
+- `~/.pi/agent/extensions/engram.ts`
+
+What it provides:
+- Native Engram tools (`engram_search`, `engram_save`, `engram_context`, `engram_session_summary`, ...)
+- Memory Protocol injection on every prompt
+- Session lifecycle tracking (`/sessions` start/end)
+- Compaction recovery instruction + context reinjection
+- Auto-start of `engram serve` when needed
+
+This mirrors the OpenCode setup philosophy: lightweight adapter logic in TypeScript, persistence and semantics in the Go core.
 
 ---
 

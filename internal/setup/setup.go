@@ -10,6 +10,7 @@
 //     absolute binary path so the subprocess never needs PATH resolution.
 //   - Gemini CLI: injects MCP registration in ~/.gemini/settings.json
 //   - Codex: injects MCP registration in ~/.codex/config.toml
+//   - Pi: copies embedded extension to ~/.pi/agent/extensions/
 package setup
 
 import (
@@ -32,10 +33,14 @@ var (
 		return exec.Command(name, args...).CombinedOutput()
 	}
 	openCodeReadFile = func(path string) ([]byte, error) {
-		return openCodeFS.ReadFile(path)
+		return setupFS.ReadFile(path)
+	}
+	piReadFile = func(path string) ([]byte, error) {
+		return setupFS.ReadFile(path)
 	}
 	statFn                             = os.Stat
 	openCodeWriteFileFn                = os.WriteFile
+	piWriteFileFn                      = os.WriteFile
 	readFileFn                         = os.ReadFile
 	writeFileFn                        = os.WriteFile
 	jsonMarshalFn                      = json.Marshal
@@ -50,8 +55,8 @@ var (
 	writeClaudeCodeUserMCPFn           = writeClaudeCodeUserMCP
 )
 
-//go:embed plugins/opencode/*
-var openCodeFS embed.FS
+//go:embed plugins/opencode/* plugins/pi/*
+var setupFS embed.FS
 
 // Agent represents a supported AI coding agent.
 type Agent struct {
@@ -232,6 +237,11 @@ func SupportedAgents() []Agent {
 			Description: "Codex — MCP registration plus model/compaction instruction files",
 			InstallDir:  codexConfigPath(),
 		},
+		{
+			Name:        "pi",
+			Description: "Pi — TypeScript extension with native engram tools, prompt injection, and compaction recovery",
+			InstallDir:  piExtensionsDir(),
+		},
 	}
 }
 
@@ -246,8 +256,10 @@ func Install(agentName string) (*Result, error) {
 		return installGeminiCLI()
 	case "codex":
 		return installCodex()
+	case "pi":
+		return installPi()
 	default:
-		return nil, fmt.Errorf("unknown agent: %q (supported: opencode, claude-code, gemini-cli, codex)", agentName)
+		return nil, fmt.Errorf("unknown agent: %q (supported: opencode, claude-code, gemini-cli, codex, pi)", agentName)
 	}
 }
 
@@ -476,6 +488,31 @@ func stripJSONC(data []byte) []byte {
 		i++
 	}
 	return out
+}
+
+// ─── Pi ──────────────────────────────────────────────────────────────────────
+
+func installPi() (*Result, error) {
+	dir := piExtensionsDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("create pi extensions dir %s: %w", dir, err)
+	}
+
+	data, err := piReadFile("plugins/pi/engram.ts")
+	if err != nil {
+		return nil, fmt.Errorf("read embedded pi extension: %w", err)
+	}
+
+	dest := filepath.Join(dir, "engram.ts")
+	if err := piWriteFileFn(dest, data, 0644); err != nil {
+		return nil, fmt.Errorf("write %s: %w", dest, err)
+	}
+
+	return &Result{
+		Agent:       "pi",
+		Destination: dir,
+		Files:       1,
+	}, nil
 }
 
 // ─── Claude Code ─────────────────────────────────────────────────────────────
@@ -1004,4 +1041,9 @@ func codexInstructionsPath() string {
 
 func codexCompactPromptPath() string {
 	return filepath.Join(filepath.Dir(codexConfigPath()), "engram-compact-prompt.md")
+}
+
+func piExtensionsDir() string {
+	home, _ := userHomeDir()
+	return filepath.Join(home, ".pi", "agent", "extensions")
 }

@@ -12,6 +12,7 @@ Engram works with **any MCP-compatible agent**. Pick your agent below.
 | OpenCode | `engram setup opencode` | [Details](#opencode) |
 | Gemini CLI | `engram setup gemini-cli` | [Details](#gemini-cli) |
 | Codex | `engram setup codex` | [Details](#codex) |
+| Pi | `engram setup pi` | [Details](#pi) |
 | VS Code | `code --add-mcp '{"name":"engram","command":"engram","args":["mcp"]}'` | [Details](#vs-code-copilot--claude-code-extension) |
 | Antigravity | Manual JSON config | [Details](#antigravity) |
 | Cursor | Manual JSON config | [Details](#cursor) |
@@ -167,6 +168,38 @@ experimental_compact_prompt_file = "~/.codex/engram-compact-prompt.md"
 command = "engram"
 args = ["mcp"]
 ```
+
+---
+
+## Pi
+
+Recommended: one command to install the native Pi extension (no MCP needed):
+
+```bash
+engram setup pi
+```
+
+`engram setup pi` installs `~/.pi/agent/extensions/engram.ts`.
+
+The extension provides:
+- Native Pi tools (`engram_search`, `engram_save`, `engram_context`, `engram_session_summary`, etc.)
+- Automatic Memory Protocol injection into the system prompt
+- Session lifecycle hooks (session start/end tracking)
+- Compaction recovery guidance + memory context reinjection
+- Auto-start of `engram serve` when needed
+
+After install:
+1. Restart Pi (or run `/reload`)
+2. Confirm startup header shows extension `engram`
+
+Manual install alternative:
+
+```bash
+mkdir -p ~/.pi/agent/extensions
+cp plugin/pi/engram.ts ~/.pi/agent/extensions/engram.ts
+```
+
+> Pi integration is extension-based by design. This avoids MCP setup friction while keeping the same memory workflow used in other agents.
 
 ---
 

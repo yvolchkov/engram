@@ -779,6 +779,12 @@ func printPostInstall(agent string) {
 		fmt.Println("  1. Restart Codex so MCP config is reloaded")
 		fmt.Println("  2. Verify ~/.codex/config.toml has [mcp_servers.engram]")
 		fmt.Println("  3. Verify model_instructions_file + experimental_compact_prompt_file are set")
+	case "pi":
+		fmt.Println("\nNext steps:")
+		fmt.Println("  1. If pi is currently running, run /reload to activate the extension")
+		fmt.Println("  2. Otherwise restart pi and it will auto-load on startup")
+		fmt.Println("  3. Verify startup header lists extension: engram")
+		fmt.Println("  4. No MCP setup required — engram tools are provided by the extension")
 	}
 }
 
@@ -804,7 +810,7 @@ Commands:
   stats              Show memory system statistics
   export [file]      Export all memories to JSON (default: engram-export.json)
   import <file>      Import memories from a JSON export file
-  setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex)
+  setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex, pi)
   sync               Export new memories as compressed chunk to .engram/
                        --import   Import new chunks from .engram/ into local DB
                        --status   Show sync status (local vs remote chunks)

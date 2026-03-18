@@ -35,6 +35,7 @@ link_skills() {
 link_skills "${REPO_ROOT}/.claude"
 link_skills "${REPO_ROOT}/.codex"
 link_skills "${REPO_ROOT}/.gemini"
+link_skills "${REPO_ROOT}/.pi"
 
 echo
-echo "Done. Skills linked for project .claude, .codex, and .gemini"
+echo "Done. Skills linked for project .claude, .codex, .gemini, and .pi"

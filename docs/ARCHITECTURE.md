@@ -132,6 +132,7 @@ engram/
 │       └── view.go                 # Rendering, per-screen views
 ├── plugin/
 │   ├── opencode/engram.ts          # OpenCode adapter plugin
+│   ├── pi/engram.ts                # Pi extension (native tools + protocol/hooks)
 │   └── claude-code/                # Claude Code plugin (hooks + skill)
 │       ├── .claude-plugin/plugin.json
 │       ├── .mcp.json
@@ -139,7 +140,7 @@ engram/
 │       ├── scripts/                # session-start, post-compaction, subagent-stop, session-stop
 │       └── skills/memory/SKILL.md
 ├── skills/                         # Contributor AI skills (repo-wide standards + Engram-specific guardrails)
-├── setup.sh                        # Links repo skills into .claude/.codex/.gemini (project-local)
+├── setup.sh                        # Links repo skills into .claude/.codex/.gemini/.pi (project-local)
 ├── assets/                         # Screenshots and media
 ├── DOCS.md                         # Full technical documentation
 ├── CONTRIBUTING.md                 # Contribution workflow and standards
@@ -152,7 +153,7 @@ engram/
 ## CLI Reference
 
 ```
-engram setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex)
+engram setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex, pi)
 engram serve [port]       Start HTTP API server (default: 7437)
 engram mcp                Start MCP server (stdio transport)
 engram tui                Launch interactive terminal UI

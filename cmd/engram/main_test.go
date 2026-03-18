@@ -170,6 +170,7 @@ func TestPrintPostInstall(t *testing.T) {
 		{agent: "opencode", expects: []string{"Restart OpenCode", "engram serve &"}},
 		{agent: "gemini-cli", expects: []string{"Restart Gemini CLI", "~/.gemini/settings.json"}},
 		{agent: "codex", expects: []string{"Restart Codex", "~/.codex/config.toml"}},
+		{agent: "pi", expects: []string{"run /reload", "restart pi", "No MCP setup required"}},
 		{agent: "unknown", expects: nil},
 	}
 
