@@ -12,15 +12,19 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/mcp"
 	"github.com/Gentleman-Programming/engram/internal/server"
@@ -83,6 +87,10 @@ var (
 
 	stdinScanner = func() *bufio.Scanner { return bufio.NewScanner(os.Stdin) }
 	userHomeDir  = os.UserHomeDir
+	httpDo       = func(req *http.Request) (*http.Response, error) {
+		return (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	}
+	nowFn = time.Now
 )
 
 func main() {
@@ -144,6 +152,8 @@ func main() {
 		cmdSync(cfg)
 	case "setup":
 		cmdSetup()
+	case "doctor":
+		cmdDoctor()
 	case "version", "--version", "-v":
 		fmt.Printf("engram %s\n", version)
 	case "help", "--help", "-h":
@@ -788,6 +798,158 @@ func printPostInstall(agent string) {
 	}
 }
 
+func cmdDoctor() {
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: engram doctor pi")
+		exitFunc(1)
+	}
+
+	target := strings.ToLower(strings.TrimSpace(os.Args[2]))
+	switch target {
+	case "pi":
+		if err := doctorPi(); err != nil {
+			fatal(err)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "engram: unsupported doctor target %q (supported: pi)\n", target)
+		exitFunc(1)
+	}
+}
+
+func doctorPi() error {
+	home, err := userHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+
+	extPath := filepath.Join(home, ".pi", "agent", "extensions", "engram.ts")
+	port := os.Getenv("ENGRAM_PORT")
+	if port == "" {
+		port = "7437"
+	}
+	baseURL := fmt.Sprintf("http://127.0.0.1:%s", port)
+
+	type check struct {
+		name    string
+		ok      bool
+		details string
+	}
+	checks := make([]check, 0, 3)
+
+	if _, err := os.Stat(extPath); err != nil {
+		checks = append(checks, check{name: "Pi extension installed", ok: false, details: fmt.Sprintf("missing %s (run: engram setup pi)", extPath)})
+	} else {
+		data, readErr := os.ReadFile(extPath)
+		if readErr != nil {
+			checks = append(checks, check{name: "Pi extension installed", ok: false, details: fmt.Sprintf("cannot read %s: %v", extPath, readErr)})
+		} else {
+			required := []string{"engram_search", "engram_save", "engram_context", "engram_session_summary"}
+			missing := make([]string, 0)
+			text := string(data)
+			for _, tool := range required {
+				if !strings.Contains(text, `name: "`+tool+`"`) {
+					missing = append(missing, tool)
+				}
+			}
+			if len(missing) > 0 {
+				checks = append(checks, check{name: "Pi extension tools declared", ok: false, details: fmt.Sprintf("missing tool declarations: %s", strings.Join(missing, ", "))})
+			} else {
+				checks = append(checks, check{name: "Pi extension installed", ok: true, details: extPath})
+			}
+		}
+	}
+
+	healthReq, _ := http.NewRequest(http.MethodGet, baseURL+"/health", nil)
+	healthRes, err := httpDo(healthReq)
+	if err != nil {
+		checks = append(checks, check{name: "Engram server reachable", ok: false, details: fmt.Sprintf("%v (hint: run `engram serve`)", err)})
+	} else {
+		_ = healthRes.Body.Close()
+		if healthRes.StatusCode == http.StatusOK {
+			checks = append(checks, check{name: "Engram server reachable", ok: true, details: baseURL})
+		} else {
+			checks = append(checks, check{name: "Engram server reachable", ok: false, details: fmt.Sprintf("%s/health returned %d", baseURL, healthRes.StatusCode)})
+		}
+	}
+
+	sessionID := fmt.Sprintf("doctor-pi-%d", nowFn().UnixNano())
+	smokeErr := doctorPiAPISmoke(baseURL, sessionID)
+	if smokeErr != nil {
+		checks = append(checks, check{name: "Engram API smoke test", ok: false, details: smokeErr.Error()})
+	} else {
+		checks = append(checks, check{name: "Engram API smoke test", ok: true, details: "session create/context/end succeeded"})
+	}
+
+	fmt.Println("engram doctor pi")
+	fmt.Println()
+	allPassed := true
+	for _, c := range checks {
+		status := "PASS"
+		if !c.ok {
+			status = "FAIL"
+			allPassed = false
+		}
+		fmt.Printf("[%s] %s\n", status, c.name)
+		if c.details != "" {
+			fmt.Printf("  %s\n", c.details)
+		}
+	}
+
+	fmt.Println()
+	if allPassed {
+		fmt.Println("Pi integration is healthy.")
+		return nil
+	}
+
+	return fmt.Errorf("pi doctor checks failed")
+}
+
+func doctorPiAPISmoke(baseURL, sessionID string) error {
+	payload := map[string]string{
+		"id":        sessionID,
+		"project":   "engram-doctor",
+		"directory": "",
+	}
+	body, _ := json.Marshal(payload)
+	if _, err := doctorRequest(http.MethodPost, baseURL+"/sessions", body); err != nil {
+		return fmt.Errorf("session create failed: %w", err)
+	}
+
+	if _, err := doctorRequest(http.MethodGet, baseURL+"/context?project=engram-doctor", nil); err != nil {
+		return fmt.Errorf("context fetch failed: %w", err)
+	}
+
+	if _, err := doctorRequest(http.MethodPost, fmt.Sprintf("%s/sessions/%s/end", baseURL, sessionID), []byte(`{}`)); err != nil {
+		return fmt.Errorf("session end failed: %w", err)
+	}
+
+	return nil
+}
+
+func doctorRequest(method, url string, body []byte) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, url, reader)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := httpDo(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	resBody, _ := io.ReadAll(res.Body)
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, fmt.Errorf("status %d: %s", res.StatusCode, strings.TrimSpace(string(resBody)))
+	}
+	return resBody, nil
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func printUsage() {
@@ -811,6 +973,7 @@ Commands:
   export [file]      Export all memories to JSON (default: engram-export.json)
   import <file>      Import memories from a JSON export file
   setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex, pi)
+  doctor pi          Run Pi integration diagnostics (extension + server + API smoke)
   sync               Export new memories as compressed chunk to .engram/
                        --import   Import new chunks from .engram/ into local DB
                        --status   Show sync status (local vs remote chunks)

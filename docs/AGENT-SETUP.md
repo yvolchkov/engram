@@ -191,6 +191,7 @@ The extension provides:
 After install:
 1. Restart Pi (or run `/reload`)
 2. Confirm startup header shows extension `engram`
+3. Run `engram doctor pi` for a quick health check
 
 Manual install alternative:
 

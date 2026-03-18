@@ -2,6 +2,8 @@ package main
 
 import (
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,7 +159,7 @@ func TestPrintUsage(t *testing.T) {
 	if !strings.Contains(stdout, "engram vtest-version") {
 		t.Fatalf("usage missing version: %q", stdout)
 	}
-	if !strings.Contains(stdout, "search <query>") || !strings.Contains(stdout, "setup [agent]") {
+	if !strings.Contains(stdout, "search <query>") || !strings.Contains(stdout, "setup [agent]") || !strings.Contains(stdout, "doctor pi") {
 		t.Fatalf("usage missing expected commands: %q", stdout)
 	}
 }
@@ -579,6 +581,7 @@ func TestMainExitPaths(t *testing.T) {
 	}{
 		{name: "no args", helperCase: "no-args", expectedOutput: "Usage:", expectedExitOne: true},
 		{name: "unknown command", helperCase: "unknown", expectedOutput: "Usage:", expectedStderr: "unknown command:", expectedExitOne: true},
+		{name: "doctor pi failure", helperCase: "doctor-pi-fail", expectedOutput: "[FAIL] Pi extension installed", expectedStderr: "pi doctor checks failed", expectedExitOne: true},
 	}
 
 	for _, tc := range tests {
@@ -620,11 +623,67 @@ func TestMainExitHelper(t *testing.T) {
 		os.Args = []string{"engram"}
 	case "unknown":
 		os.Args = []string{"engram", "definitely-unknown-command"}
+	case "doctor-pi-fail":
+		tmp := os.TempDir()
+		userHomeDir = func() (string, error) { return tmp, nil }
+		_ = os.Setenv("ENGRAM_PORT", "65534")
+		os.Args = []string{"engram", "doctor", "pi"}
 	default:
 		os.Args = []string{"engram", "--help"}
 	}
 
 	main()
+}
+
+func TestCmdDoctorPiSuccess(t *testing.T) {
+	home := t.TempDir()
+	oldHome := userHomeDir
+	t.Cleanup(func() { userHomeDir = oldHome })
+	userHomeDir = func() (string, error) { return home, nil }
+
+	extDir := filepath.Join(home, ".pi", "agent", "extensions")
+	if err := os.MkdirAll(extDir, 0o755); err != nil {
+		t.Fatalf("mkdir ext dir: %v", err)
+	}
+	extPath := filepath.Join(extDir, "engram.ts")
+	extContent := `name: "engram_search"\nname: "engram_save"\nname: "engram_context"\nname: "engram_session_summary"`
+	if err := os.WriteFile(extPath, []byte(extContent), 0o644); err != nil {
+		t.Fatalf("write ext file: %v", err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/health":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/sessions":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/context":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"context":""}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/end"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	port := ts.URL[strings.LastIndex(ts.URL, ":")+1:]
+	t.Setenv("ENGRAM_PORT", port)
+
+	withArgs(t, "engram", "doctor", "pi")
+	stdout, stderr := captureOutput(t, func() { cmdDoctor() })
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got: %q", stderr)
+	}
+	for _, expected := range []string{"[PASS] Pi extension installed", "[PASS] Engram server reachable", "[PASS] Engram API smoke test", "Pi integration is healthy."} {
+		if !strings.Contains(stdout, expected) {
+			t.Fatalf("doctor output missing %q: %q", expected, stdout)
+		}
+	}
 }
 
 func TestCmdSearchLocalMode(t *testing.T) {

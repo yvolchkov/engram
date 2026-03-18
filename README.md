@@ -122,6 +122,7 @@ Full sync documentation → [DOCS.md](DOCS.md)
 | Command | Description |
 |---------|-------------|
 | `engram setup [agent]` | Install agent integration |
+| `engram doctor pi` | Diagnose Pi integration health |
 | `engram serve [port]` | Start HTTP API (default: 7437) |
 | `engram mcp` | Start MCP server (stdio) |
 | `engram tui` | Launch terminal UI |

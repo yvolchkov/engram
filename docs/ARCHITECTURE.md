@@ -154,6 +154,7 @@ engram/
 
 ```
 engram setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex, pi)
+engram doctor pi          Run Pi integration diagnostics (extension + server + API smoke)
 engram serve [port]       Start HTTP API server (default: 7437)
 engram mcp                Start MCP server (stdio transport)
 engram tui                Launch interactive terminal UI
